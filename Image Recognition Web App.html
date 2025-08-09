@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Recognition App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-2xl text-center">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Image Recognition</h1>
+        <p class="text-gray-600 mb-8">Upload an image and the app will provide a description using a large language model.</p>
+
+        <!-- Image Upload Section -->
+        <div class="mb-8">
+            <label for="image-upload" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-full cursor-pointer transition duration-300 ease-in-out transform hover:scale-105">
+                Choose Image
+            </label>
+            <input type="file" id="image-upload" accept="image/*" class="hidden">
+        </div>
+
+        <!-- Image Preview -->
+        <div id="image-preview-container" class="hidden mb-8">
+            <img id="image-preview" src="#" alt="Image Preview" class="mx-auto max-h-96 rounded-lg shadow-md border-2 border-gray-200">
+        </div>
+
+        <!-- Action Button -->
+        <button id="describe-button" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            Describe Image
+        </button>
+
+        <!-- Loading Indicator and Response Area -->
+        <div id="status-area" class="mt-8">
+            <!-- Loading Spinner -->
+            <div id="loading-spinner" class="hidden">
+                <svg class="animate-spin h-8 w-8 text-indigo-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p class="mt-2 text-gray-500">Generating description...</p>
+            </div>
+            <!-- Description Output -->
+            <div id="description-output" class="text-left mt-4 p-4 bg-gray-50 rounded-lg shadow-inner">
+                <p class="text-gray-700 font-medium">Description will appear here.</p>
+            </div>
+            <!-- Error Message -->
+            <div id="error-message" class="hidden mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                Something went wrong. Please try again.
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const imageUpload = document.getElementById('image-upload');
+            const imagePreview = document.getElementById('image-preview');
+            const imagePreviewContainer = document.getElementById('image-preview-container');
+            const describeButton = document.getElementById('describe-button');
+            const loadingSpinner = document.getElementById('loading-spinner');
+            const descriptionOutput = document.getElementById('description-output');
+            const errorMessage = document.getElementById('error-message');
+
+            let uploadedImageData = null;
+
+            // Handle image upload and preview
+            imageUpload.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        imagePreview.src = e.target.result;
+                        imagePreviewContainer.classList.remove('hidden');
+                        uploadedImageData = e.target.result.split(',')[1]; // Store base64 data without the prefix
+                        describeButton.disabled = false;
+                        descriptionOutput.innerHTML = '<p class="text-gray-700 font-medium">Description will appear here.</p>';
+                        errorMessage.classList.add('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    uploadedImageData = null;
+                    imagePreviewContainer.classList.add('hidden');
+                    describeButton.disabled = true;
+                }
+            });
+
+            // Handle the API call to describe the image
+            describeButton.addEventListener('click', async () => {
+                if (!uploadedImageData) {
+                    errorMessage.classList.remove('hidden');
+                    errorMessage.innerHTML = 'Please upload an image first.';
+                    return;
+                }
+
+                // Show loading state
+                describeButton.disabled = true;
+                loadingSpinner.classList.remove('hidden');
+                descriptionOutput.classList.add('hidden');
+                errorMessage.classList.add('hidden');
+
+                const prompt = "Describe this image in a concise and detailed manner.";
+
+                // Prepare API payload
+                const payload = {
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [
+                                { text: prompt },
+                                {
+                                    inlineData: {
+                                        mimeType: "image/jpeg", // Assuming JPEG, but could be dynamic
+                                        data: uploadedImageData
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                };
+
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API error: ${response.status} ${response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const description = result.candidates[0].content.parts[0].text;
+                        descriptionOutput.innerHTML = `<p>${description}</p>`;
+                        descriptionOutput.classList.remove('hidden');
+                    } else {
+                        throw new Error('No description found in API response.');
+                    }
+
+                } catch (e) {
+                    console.error("Fetch error:", e);
+                    errorMessage.classList.remove('hidden');
+                    errorMessage.innerHTML = `Error: ${e.message}`;
+                } finally {
+                    // Hide loading state
+                    loadingSpinner.classList.add('hidden');
+                    describeButton.disabled = false;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
